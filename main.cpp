@@ -1,5 +1,6 @@
 #include<iostream>
 #include<ctime>
+#include<thread>
 #include"include/ocm.h"
 using namespace std;
 void my_binary(int64_t n);
@@ -54,7 +55,21 @@ int main(int argc, char *argv[]){
                 sketch1.clear_core();
                 // for all kmer update count.
                 start_time = clock();
-                update_count_from_file(INPUT_FASTA_FILE,kmer_len,sketch1);
+                //sketch1.update_count_from_file(INPUT_FASTA_FILE,kmer_len,CANONICALIZE);
+
+                /// updating count through threading
+
+                std::thread th1(&sketch::ocm::ocmbase<uint64_t, sketch::hash::WangHash,2>::update_count_from_file, &sketch1, "input/lhg22L20MC5x.fa_0.fa",kmer_len,CANONICALIZE);
+                std::thread th2(&sketch::ocm::ocmbase<uint64_t, sketch::hash::WangHash,2>::update_count_from_file, &sketch1, "input/lhg22L20MC5x.fa_1.fa",kmer_len,CANONICALIZE);
+                std::thread th3(&sketch::ocm::ocmbase<uint64_t, sketch::hash::WangHash,2>::update_count_from_file, &sketch1, "input/lhg22L20MC5x.fa_2.fa",kmer_len,CANONICALIZE);
+                std::thread th4(&sketch::ocm::ocmbase<uint64_t, sketch::hash::WangHash,2>::update_count_from_file, &sketch1, "input/lhg22L20MC5x.fa_3.fa",kmer_len,CANONICALIZE);
+
+                th1.join();
+                th2.join();
+                th3.join();
+                th4.join();
+
+                /// threading ends
                 end_time = clock();
                 cout<<"Updating count for ocms round "<<r<<" is completed in "<<(double)(end_time - start_time)/CLOCKS_PER_SEC<<" seconds\n";
                 //sketch1.showCounters(cal(sample_kmer));
@@ -134,97 +149,6 @@ int main(int argc, char *argv[]){
     return 0;
 }
 
-
-/*
-int main_backup(){
-    sketch::ocm::ccmbase <int32_t, sketch::hash::WangHash > cms_obj(NP,NH,137,false);   // np = 5, nh = 10, seed = 137,
-    sketch::ocm::ccmbase <int32_t, sketch::hash::WangHash > ccms_obj(NP,NH,137,true);
-
-    clock_t start_time = clock();
-    update_count_from_file(INPUT_FASTA_FILE,kmer_len, cms_obj);
-    clock_t end_time = clock();
-    cout<<"Updating Count for cms is completed in "<<(double)(end_time - start_time)/CLOCKS_PER_SEC<<" seconds\n";
-
-    cout<<"True Count: "<<counter<<endl;
-
-    start_time = clock();
-    update_count_from_file(INPUT_FASTA_FILE,kmer_len, ccms_obj);
-    end_time = clock();
-    cout<<"Updating count for ccms is completed in "<<(double)(end_time - start_time)/CLOCKS_PER_SEC<<" seconds\n";
-
-    //estimation
-    cout<<"CMS Estimate count: "<<cms_obj.est_count(cal(sample_kmer))<<endl; //estimation of the sample k-mer
-    cout<<"CCMS Estimate count: "<<ccms_obj.est_count(cal(sample_kmer))<<endl;
-
-
-    //construct OCM
-    sketch::ocm::ocmbase <uint64_t, sketch::hash::WangHash,2> sketch1(NP,NH,137);
-    for(int r = 0; r< TOTAL_ROUND; r++){
-        if (r > 0){
-            // for all kmers update collision
-            clock_t start_time = clock();
-            update_collision_from_file(INPUT_FASTA_FILE,kmer_len,sketch1,r);
-            clock_t end_time = clock();
-            cout<<"Updating collision for oms round "<<r<<" is completed in "<<(double)(end_time - start_time)/CLOCKS_PER_SEC<<" seconds\n";
-        }
-
-        sketch1.clear_core();
-        // for all kmer update count.
-        start_time = clock();
-        update_count_from_file(INPUT_FASTA_FILE,kmer_len,sketch1);
-        end_time = clock();
-        cout<<"Updating count for oms round "<<r<<" is completed in "<<(double)(end_time - start_time)/CLOCKS_PER_SEC<<" seconds\n";
-        //sketch1.showCounters(cal(sample_kmer));
-    }
-    //end construct OCM
-
-    cout<<"Offline CMS Estimate count: "<<sketch1.est_count(cal(sample_kmer))<<endl;
-
-
-    //construct OCCM
-    sketch::ocm::ocmbase <uint64_t, sketch::hash::WangHash,2> sketch2(NP,NH,137);
-    for(int r = 0; r< TOTAL_ROUND; r++){
-
-        if (r > 0){
-            // for all kmers update collision
-            clock_t start_time = clock();
-             update_collision_from_file(INPUT_FASTA_FILE,kmer_len,sketch1,r);
-            clock_t end_time = clock();
-            cout<<"Updating collision for ocms round "<<r<<" is completed in "<<(double)(end_time - start_time)/CLOCKS_PER_SEC<<" seconds\n";
-        }
-
-
-        sketch2.clear_core();
-        // for all kmer update count collision
-        start_time = clock();
-        //for(auto kmer: kmers_vec) sketch2.update_count_collision(kmer,r,TOTAL_ROUND);
-        update_count_collision_from_file(INPUT_FASTA_FILE,kmer_len,sketch2,r,TOTAL_ROUND);
-        end_time = clock();
-        cout<<"Updating count-collision for ocms round "<<r<<" is completed in "<<(double)(end_time - start_time)/CLOCKS_PER_SEC<<" seconds\n";
-        //sketch2.showCounters(cal(sample_kmer));
-    }
-    //end construct OCCM
-    cout<<"Offline CCMS Estimate count: "<<sketch2.est_count(cal(sample_kmer))<<endl;
-
-
-
-    //query using original data:
-    ifstream qifile("test_exact_count_lhg22L20MC5x_20000.txt");
-    //ifstream qifile("rymv.sim.22mer.counts.txt");
-    ofstream ofile("data/"+INPUT_FASTA_FILE+"_QueryOutput.txt");
-    ofstream ocsvfile("data/"+INPUT_FASTA_FILE+"_Report.csv");
-    ocsvfile<<"kmer,true_count,cm,ccm,ocm,occm\n";
-    string kmer_str; int file_count;
-    while(!qifile.eof()){
-        qifile>>kmer_str>>file_count;
-        uint64_t kmer_cal = cal(kmer_str);
-        ofile<<kmer_str<<" File Count: "<<file_count<<" CMS-count: "<<cms_obj.est_count(kmer_cal)<<" CCMS-count: "<<ccms_obj.est_count(kmer_cal)<<" OCMS-count: "<<sketch1.est_count(kmer_cal)<<" OCCMS-count: "<<sketch2.est_count(kmer_cal)<<" \n";
-        ocsvfile<<kmer_str<<","<<file_count<<","<<cms_obj.est_count(kmer_cal)<<","<<ccms_obj.est_count(kmer_cal)<<","<<sketch1.est_count(kmer_cal)<<","<<sketch2.est_count(kmer_cal)<<"\n";
-        //cout<<kmer_str<<" File Count: "<<file_count<<"  CMS-count: "<<cms_obj.est_count(kmer_cal)<<" CCMS-count: "<<ccms_obj.est_count(kmer_cal)<<" OCMS-count: "<<sketch1.est_count(kmer_cal)<<" OCCMS-count: "<<sketch2.est_count(kmer_cal)<<" \n";
-        }
-    return 0;
-}
-*/
 void my_binary(int64_t n) //converting k-mer to binary representation
 {
     int a[100];
