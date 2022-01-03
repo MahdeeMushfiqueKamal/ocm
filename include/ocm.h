@@ -91,9 +91,10 @@ public:
 // Base for Offline Count min Sketch
 template<typename CounterType=int32_t , typename HashStruct = WangHash , unsigned int BitSize = 4>
 class ocmbase{
-    std::vector<CounterType, allocator<CounterType>> core_;     //resisters of the hash table
-    //compact::vector<unsigned int, BitSize> collision_;                                // will keep track of collision after each round
-    std::vector<unsigned int> collision_;
+    //std::vector<CounterType, allocator<CounterType>> core_;     //resisters of the hash table
+    compact::vector<CounterType,32> core_;
+    compact::vector<unsigned int, BitSize> collision_;                                // will keep track of collision after each round
+    //std::vector<unsigned int> collision_;
     uint32_t np_;                                               // no of column (W) is 2^np_
     uint32_t nh_;                                               // number of hash functions
     uint64_t mask_;                                             // and-ing a number with mask will give X mod W
@@ -124,7 +125,7 @@ public:
 
     void clear_core(){
         core_.clear();
-        core_.shrink_to_fit();
+        //core_.shrink_to_fit();
         core_.resize(nh_ << np_);
     }
 
@@ -142,7 +143,7 @@ public:
         }
 
         for(unsigned added = 0; added < nh_; added++){
-            if( collision_[pos[added]] == min_collision) core_[pos[added]]++;
+            if( collision_[pos[added]] == min_collision) core_[pos[added]] = core_[pos[added]]+1;
         }
     }
 
@@ -162,7 +163,7 @@ public:
             // #>=1 cell without collision in prev round
             CounterType min_count = std::numeric_limits<int>::max();
             for(unsigned added=0; added< nh_; added++){
-                if(collision_[pos[added]] == min_collision) min_count = std::min(min_count, core_[pos[added]]);
+                if(collision_[pos[added]] == min_collision) min_count = std::min((int)min_count, (int)core_[pos[added]]);
             }
 
             for(unsigned added=0; added< nh_; added++){
@@ -179,7 +180,7 @@ public:
             // every cell has a collision in the prev round
             CounterType min_count = std::numeric_limits<int>::max();
             for(unsigned added=0; added< nh_; added++){
-                min_count = std::min(min_count, core_[pos[added]]);
+                min_count = std::min((int)min_count, (int)core_[pos[added]]);
             }
 
             for(unsigned added=0; added< nh_; added++){
@@ -205,7 +206,7 @@ public:
             CounterType hv = hf_(val ^ seeds_[added]);
             //cptr[added] = hv;                             //counts vector now contains hash values
             pos[added] = (hv & mask_) + (added << np_);   // exact positions where we will increase the counter by one.
-            min_collision = std::min(min_collision, (int)collision_[pos[added]]);
+            min_collision = std::min((int)min_collision, (int)collision_[pos[added]]);
         }
 
 
@@ -213,7 +214,7 @@ public:
             // find min-count
             CounterType min_count = std::numeric_limits<CounterType>::max();
             for(unsigned added = 0; added < nh_; added++){
-                min_count = (std::min<CounterType>)(core_[pos[added]], min_count);
+                min_count = (std::min<CounterType>)((int)core_[pos[added]], (int)min_count);
             }
 
             for(unsigned added = 0; added < nh_; added++){
