@@ -1,5 +1,6 @@
 #include <iostream>
 #include <vector>
+#include <tbb/concurrent_vector.h>
 #include <fstream>
 #include "hash.h"
 #include "compact_vector/compact_vector.hpp"
@@ -92,7 +93,7 @@ public:
 template<typename CounterType=int32_t , typename HashStruct = WangHash , unsigned int BitSize = 4>
 class ocmbase{
     //std::vector<CounterType, allocator<CounterType>> core_;     //resisters of the hash table
-    compact::vector<CounterType,32> core_;
+    tbb::concurrent_vector<CounterType> core_;
     compact::vector<unsigned int, BitSize> collision_;                                // will keep track of collision after each round
     //std::vector<unsigned int> collision_;
     uint32_t np_;                                               // no of column (W) is 2^np_
@@ -143,7 +144,9 @@ public:
         }
 
         for(unsigned added = 0; added < nh_; added++){
-            if( collision_[pos[added]] == min_collision) core_[pos[added]] = core_[pos[added]]+1;
+            if( collision_[pos[added]] == min_collision){
+                core_[pos[added]] = core_[pos[added]]+1;
+            }
         }
     }
 
