@@ -1,7 +1,7 @@
 import pandas as pd
 import math
 import sklearn.metrics
-df = pd.read_csv('query_output.csv')
+df = pd.read_csv('query_result.csv')
 print(df.head())
 print("sparman correlation coffecient:")
 sp_corr = df.corr(method='spearman')['true_count'].drop('true_count')
