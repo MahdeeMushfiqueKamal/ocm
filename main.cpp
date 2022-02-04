@@ -54,15 +54,13 @@ int main(int argc, char *argv[]){
                     std::vector<std::thread> threads;
                     for (std::size_t i = 0; i < NUM_THREAD; i++) {
                         string ith_filename = INPUT_FASTA_FILE+"_"+to_string(i)+".fa";
-                        cout<<"Trying to open "<<ith_filename<<endl;
+                        cout<<"Update-collision opening "<<ith_filename<<endl;
                         threads.emplace_back(&sketch::ocm::ocmbase<uint64_t, sketch::hash::WangHash,2>::update_collision_from_file, &sketch1, ith_filename,kmer_len,r,CANONICALIZE);
                     }
 
                     for (auto& thread : threads) {
                         thread.join();
                     }
-                    // thread ends
-
                     // threaded update collision ends
                     auto end_time = std::chrono::high_resolution_clock::now();
                     std::chrono::duration<float> duration = end_time - start_time;
@@ -73,7 +71,30 @@ int main(int argc, char *argv[]){
                 sketch1.clear_core();
                 // for all kmer update count.
                 auto start_time = std::chrono::high_resolution_clock::now();
-                update_count_from_file(INPUT_FASTA_FILE,kmer_len,sketch1);
+                //sketch1.update_count_from_file(INPUT_FASTA_FILE,kmer_len,CANONICALIZE);
+
+                /// creating different cores_ for different threads
+                vector<uint64_t> local_cores_[NUM_THREAD];
+                for(int i=0;i<NUM_THREAD;i++){
+                    local_cores_[i].clear();
+                    local_cores_[i].resize(NH<<NP);
+                }
+                // updating collision through thread
+                std::vector<std::thread> threads;
+                for (std::size_t i = 0; i < NUM_THREAD; i++) {
+                    string ith_filename = INPUT_FASTA_FILE+"_"+to_string(i)+".fa";
+                    cout<<"Update-count, opening "<<ith_filename<<endl;
+                    threads.emplace_back(&sketch::ocm::ocmbase<uint64_t, sketch::hash::WangHash,2>::update_count_from_file_multithread, &sketch1, std::ref(local_cores_[i]),ith_filename,kmer_len,CANONICALIZE);
+                }
+
+//                for(auto resgister : local_cores_[0]) cout<<resgister<<" ";
+//                cout<<endl;
+                for (auto& thread : threads) {
+                    thread.join();
+                }
+                // threaded update collision ends
+                for(int i=0;i<NUM_THREAD;i++)sketch1.update_core_from_vector(std::ref(local_cores_[i]));
+                // update count ends
                 auto end_time = std::chrono::high_resolution_clock::now();
                 std::chrono::duration<float> duration = end_time - start_time;
                 total_time+=duration.count();
@@ -96,7 +117,7 @@ int main(int argc, char *argv[]){
                 std::vector<std::thread> threads;
                 for (std::size_t i = 0; i < NUM_THREAD; i++) {
                     string ith_filename = INPUT_FASTA_FILE+"_"+to_string(i)+".fa";
-                    cout<<"Trying to open "<<ith_filename<<endl;
+                    cout<<"Update-collision, opening "<<ith_filename<<endl;
                     threads.emplace_back(&sketch::ocm::ocmbase<uint64_t, sketch::hash::WangHash,2>::update_collision_from_file, &sketch2, ith_filename,kmer_len,r,CANONICALIZE);
                 }
 
@@ -257,62 +278,6 @@ uint64_t reverse_compliment(uint64_t cal_kmer, int kmer_length)
         cal_kmer=cal_kmer>>2;
     }
     return k_mer;
-}
-
-
-
-
-template <typename ccmbase_obj> void update_count_from_file(string file, int len_k_mer, ccmbase_obj &ccmbase_obj_name)
-{
-    std::ifstream input(file);
-    if(!input.good()){cout<<"Can't open"<<endl;}
-
-    std::string line, name, content;
-    while( std::getline( input, line ).good()){ //reading 1 line from input
-
-        if( line.empty() || line[0] == '>' ){
-            if( !name.empty() ){
-                int l=content.length();
-                for(int i=0; i<=l-len_k_mer; i++) //extracting k-mers from the line
-                {
-                    string part = content.substr(i, len_k_mer);
-                    int64_t k_mer = cal(part);
-                    /////////Updating part.
-                    ccmbase_obj_name.update_count(k_mer);
-                    if(CANONICALIZE)ccmbase_obj_name.update_count(reverse_compliment(k_mer,kmer_len));
-                    if(k_mer == cal(sample_kmer))counter++;
-                }
-                name.clear();
-            }
-            if( !line.empty() ){name = line.substr(1);}
-            content.clear();
-        }
-        else if( !name.empty() ){
-            if( line.find(' ') != std::string::npos ){
-                name.clear();
-                content.clear();
-            }
-            else {
-                content += line;
-            }
-        }
-    }
-    if( !name.empty() ){
-        //std::cout << name << " : " << content << std::endl;
-        int l=content.length();
-        for(int i=0; i<=l-len_k_mer; i++)
-        {
-            string part = content.substr(i, len_k_mer);
-            int64_t k_mer = cal(part);
-
-            //// updating part.
-            ccmbase_obj_name.update_count(k_mer);
-            if(CANONICALIZE)ccmbase_obj_name.update_count(reverse_compliment(k_mer,kmer_len));
-            if(k_mer == cal(sample_kmer))counter++; //manual count of the sample k-mer
-
-
-        }
-    }
 }
 
 template <typename ccmbase_obj> void update_count_collision_from_file(string file, int len_k_mer, ccmbase_obj &ccmbase_obj_name, int round, int total_round)

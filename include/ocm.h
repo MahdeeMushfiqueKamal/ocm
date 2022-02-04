@@ -310,6 +310,85 @@ public:
     }
     // output ends
 
+    // update count for multithread
+    void update_count_for_thread(uint64_t val, std::vector<CounterType> &local_core_) {                       // update count function
+        if(local_core_.size() != nh_<<np_){std::cout<<"update_count_for_thread -> Size of input local vector is invalid\n";return;}
+        int min_collision = std::numeric_limits<int>::max();
+        //std::vector<CounterType> counts(nh_);
+        std::vector<uint64_t> pos(nh_);
+        //auto cptr = counts.data();                       //cptr points to the beginning of counts_ vector
+        // map kmers to counters + find min collision
+        for(unsigned added = 0; added < nh_; added++){
+            CounterType hv = hf_(val ^ seeds_[added]);
+            //cptr[added] = hv;               //counts vector now contains hash values
+            pos[added] = (hv & mask_) + (added << np_);   // exact positions where we will increase the counter by one.
+            min_collision = std::min(min_collision, (int)collision_[pos[added]]);
+        }
+
+        for(unsigned added = 0; added < nh_; added++){
+            if( collision_[pos[added]] == min_collision) local_core_[pos[added]]++;
+        }
+    }
+
+    // update count from file muti-threaded
+    void update_count_from_file_multithread(std::vector<CounterType> &local_core_,std::string file, int len_k_mer, bool canonicalize){
+        //std::cout<<"Size of local_core_ is "<<local_core_.size()<<std::endl;
+        std::ifstream input(file);
+        if(!input.good()){std::cout<<"Can't open"<<std::endl;}
+
+        std::string line, name, content;
+        while( std::getline( input, line ).good()){ //reading 1 line from input
+            if( line.empty() || line[0] == '>' ){
+                if( !name.empty() ){
+                    int l=content.length();
+                    for(int i=0; i<=l-len_k_mer; i++) //extracting k-mers from the line
+                    {
+                        std::string part = content.substr(i, len_k_mer);
+                        int64_t k_mer = cal(part);
+                        /// Updating part.
+                        update_count_for_thread(k_mer,local_core_);
+                        if(canonicalize)update_count_for_thread(reverse_compliment(k_mer,len_k_mer),local_core_);
+                    }
+                    name.clear();
+                }
+                if( !line.empty() ){name = line.substr(1);}
+                content.clear();
+            }
+            else if( !name.empty() ){
+                if( line.find(' ') != std::string::npos ){
+                    name.clear();
+                    content.clear();
+                }
+                else content += line;
+            }
+        }
+        if( !name.empty() ){
+            //std::cout << name << " : " << content << std::endl;
+            int l=content.length();
+            for(int i=0; i<=l-len_k_mer; i++)
+            {
+                std::string part = content.substr(i, len_k_mer);
+                int64_t k_mer = cal(part);
+
+                /// updating part.
+                update_count_for_thread(k_mer,local_core_);
+                if(canonicalize)update_count_for_thread(reverse_compliment(k_mer,len_k_mer),local_core_);
+            }
+        }
+    }
+    //update count for multithread from file ends
+
+    void update_core_from_vector(std::vector<CounterType> &local_core_){
+        if(local_core_.size() != nh_<<np_){std::cout<<"Size of input local vector is invalid\n";return;}
+//        std::cout<<"Printing input registers for update_core_from_vector:\n";
+//        for(auto resgister : local_core_) std::cout<<resgister<<" ";
+//        std::cout<<std::endl;
+        for(int i=0; i< nh_<<np_; i++){
+            core_[i] += local_core_[i];
+        }
+    }
+    /// OLD Works
+
     //update collision from file starts
     void update_collision_from_file(std::string file, int len_k_mer, int round, bool canonicalize){
         std::ifstream input(file);
@@ -358,6 +437,52 @@ public:
     }
     // update collision from file ends
 
+    // update count from file starts
+    void update_count_from_file(std::string file, int len_k_mer, bool canonicalize){
+        std::ifstream input(file);
+        if(!input.good()){std::cout<<"Can't open"<<std::endl;}
+
+        std::string line, name, content;
+        while( std::getline( input, line ).good()){ //reading 1 line from input
+            if( line.empty() || line[0] == '>' ){
+                if( !name.empty() ){
+                    int l=content.length();
+                    for(int i=0; i<=l-len_k_mer; i++) //extracting k-mers from the line
+                    {
+                        std::string part = content.substr(i, len_k_mer);
+                        int64_t k_mer = cal(part);
+                        /// Updating part.
+                        update_count(k_mer);
+                        if(canonicalize)update_count(reverse_compliment(k_mer,len_k_mer));
+                    }
+                    name.clear();
+                }
+                if( !line.empty() ){name = line.substr(1);}
+                content.clear();
+            }
+            else if( !name.empty() ){
+                if( line.find(' ') != std::string::npos ){
+                    name.clear();
+                    content.clear();
+                }
+                else content += line;
+            }
+        }
+        if( !name.empty() ){
+            //std::cout << name << " : " << content << std::endl;
+            int l=content.length();
+            for(int i=0; i<=l-len_k_mer; i++)
+            {
+                std::string part = content.substr(i, len_k_mer);
+                int64_t k_mer = cal(part);
+
+                /// updating part.
+                update_count(k_mer);
+                if(canonicalize)update_count(reverse_compliment(k_mer,len_k_mer));
+            }
+        }
+    }
+    //update count from file ends
 
     //support functions
     uint64_t cal(std::string str_k_mer)
